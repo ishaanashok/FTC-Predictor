@@ -98,66 +98,59 @@ const Home: React.FC = () => {
       </Box>
 
       <Grid container spacing={4}>
-        <Grid item xs={12} md={4}>
-          <Card sx={{ 
-            textAlign: 'center', 
-            py: 3,
-            height: '100%',
-            backgroundColor: 'primary.main',
-            color: 'white'
-          }}>
-            <CardContent>
-              <PeopleIcon sx={{ fontSize: 48, mb: 2 }} />
-              <Typography variant="h3" component="div" gutterBottom>
-                7,000+
-              </Typography>
-              <Typography variant="h6">
-                Active Teams
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card sx={{ 
-            textAlign: 'center', 
-            py: 3,
-            height: '100%',
-            backgroundColor: 'primary.main',
-            color: 'white'
-          }}>
-            <CardContent>
-              <EventIcon sx={{ fontSize: 48, mb: 2 }} />
-              <Typography variant="h3" component="div" gutterBottom>
-                150+
-              </Typography>
-              <Typography variant="h6">
-                Events Analyzed
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card sx={{ 
-            textAlign: 'center', 
-            py: 3,
-            height: '100%',
-            backgroundColor: 'primary.main',
-            color: 'white'
-          }}>
-            <CardContent>
-              <BarChartIcon sx={{ fontSize: 48, mb: 2 }} />
-              <Typography variant="h3" component="div" gutterBottom>
-                90%
-              </Typography>
-              <Typography variant="h6">
-                Prediction Accuracy
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        {[
+          {
+            label: 'Active Teams',
+            value: '7,000+',
+            icon: PeopleIcon,
+          },
+          {
+            label: 'Events Analyzed',
+            value: '150+',
+            icon: EventIcon,
+          },
+          {
+            label: 'Prediction Accuracy',
+            value: '90%',
+            icon: BarChartIcon,
+          },
+        ].map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <Grid item xs={12} md={4} key={index}>
+              <Card
+                sx={{
+                  textAlign: 'center',
+                  py: 3,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'translateY(-5px)',
+                    boxShadow: 3,
+                  },
+                }}
+              >
+                <CardContent>
+                  <Icon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                  <Typography variant="h4" component="div" gutterBottom>
+                    {stat.value}
+                  </Typography>
+                  <Typography variant="h6" color="textSecondary">
+                    {stat.label}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
+
+      {/* Additional content or sections can be added here */}
+
     </Container>
   );
 };
