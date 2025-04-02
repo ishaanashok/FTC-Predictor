@@ -1,55 +1,110 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
 import '../styles/Teams.css';
+import { Button } from '@mui/material';
+
+const ftcApi = new FTCApi();
 
 function Teams() {
     const [teams, setTeams] = useState([]);
+    const [filteredTeams, setFilteredTeams] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [searchState, setSearchState] = useState('');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [teamNumber, setTeamNumber] = useState('');
+    const [teamName, setTeamName] = useState('');
     const [page, setPage] = useState(1);
+    const [allTeams, setAllTeams] = useState([]);
+
+    const fetchTeams = async (searchParams = {}) => {
+        try {
+            setLoading(true);
+            if (searchParams.teamNumber) {
+                const params = { page, ...searchParams };
+                const response = await ftcApi.getTeams(2024, params);
+                setTeams(response.teams || []);
+                setFilteredTeams(response.teams || []);
+            } else if (searchParams.search) {
+                const response = await ftcApi.getTeams(2024, {});
+                const allTeamsData = response.teams || [];
+                setAllTeams(allTeamsData);
+                const filtered = allTeamsData.filter(team =>
+                    team.nameShort.toLowerCase().includes(searchParams.search.toLowerCase())
+                );
+                setFilteredTeams(filtered);
+                setTeams(filtered);
+            } else {
+                const params = { page };
+                const response = await ftcApi.getTeams(2024, params);
+                setTeams(response.teams || []);
+                setFilteredTeams(response.teams || []);
+            }
+        } catch (err) {
+            setError('Failed to fetch teams');
+            console.error('Error fetching teams:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchTeams = async () => {
-            try {
-                setLoading(true);
-                const response = await api.searchTeams(2024, searchState, page, searchQuery);
-                if (response.teams) {
-                    setTeams(response.teams);
-                } else {
-                    setTeams([]);
-                }
-            } catch (err) {
-                setError('Failed to fetch teams');
-                console.error('Error fetching teams:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchTeams();
-    }, [searchState, page, searchQuery]);
+    }, [page]);
+
+    const handleSearch = () => {
+        const searchParams = {};
+        if (teamNumber) {
+            searchParams.teamNumber = teamNumber;
+        } else if (teamName) {
+            searchParams.search = teamName;
+        }
+        fetchTeams(searchParams);
+    };
+
+
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && (teamNumber || teamName)) {
+            handleSearch();
+        }
+    };
 
     return (
         <div className="teams-container">
             <div className="teams-header">
                 <h2>FTC Teams</h2>
                 <div className="search-filters">
-                    <input
-                        type="text"
-                        placeholder="Enter state code (e.g., CA)"
-                        value={searchState}
-                        onChange={(e) => setSearchState(e.target.value.toUpperCase())}
-                        className="state-filter"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Search by team name or number"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="search-filter"
-                    />
+                    <div className="search-bar">
+                        <input
+                            type="number"
+                            placeholder="Search by team number"
+                            value={teamNumber}
+                            onChange={(e) => {
+                                setTeamNumber(e.target.value);
+                                setTeamName('');
+                            }}
+                            onKeyPress={handleKeyPress}
+                            className="search-filter"
+                        />
+                        <input
+                            type="text"
+                            placeholder="Search by team name"
+                            value={teamName}
+                            onChange={(e) => {
+                                setTeamName(e.target.value);
+                                setTeamNumber('');
+                            }}
+                            onKeyPress={handleKeyPress}
+                            className="search-filter"
+                        />
+                        <Button
+                            variant="contained"
+                            onClick={handleSearch}
+                            disabled={!teamNumber && !teamName}
+                            className="search-button"
+                        >
+                            Search
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -59,7 +114,7 @@ function Teams() {
             {!loading && !error && (
                 <>
                     <div className="teams-grid">
-                        {teams.map(team => (
+                        {filteredTeams.map(team => (
                             <div key={team.teamNumber} className="team-card">
                                 <h3>Team {team.teamNumber}</h3>
                                 <p className="team-name">{team.nameShort}</p>

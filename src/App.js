@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Teams from './pages/teams';
 import Events from './pages/Events';
 import EventDetails from './pages/EventDetails';
+import Home from './pages/Home';
 import Navbar from './components/Navbar';
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
       <div className="App">
         <Navbar />
         <Routes>
+          <Route path="/" element={<Home />} />
           <Route path="/teams" element={<Teams />} />
           <Route path="/events" element={<Events />} />
           <Route path="/events/:season/:eventCode" element={<EventDetails />} />

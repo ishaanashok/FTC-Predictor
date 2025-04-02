@@ -3,12 +3,6 @@ import {
   Container,
   Grid,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Paper,
   TextField,
   Box,
@@ -20,11 +14,17 @@ import {
   FormControl,
   InputLabel,
   Button,
+  Card,
+  CardContent,
+  CardActionArea,
 } from '@mui/material';
-import api from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import FTCApi from '../services/FTCApi';
 
 function Events() {
+  const navigate = useNavigate();
   const [events, setEvents] = useState([]);
+  const ftcApi = new FTCApi();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
@@ -41,28 +41,17 @@ function Events() {
       
       // Get current date
       const now = new Date();
-      
-      // Get date 30 days ago
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      // Format dates as YYYY-MM-DD
       const formatDate = (date) => {
         return date.toISOString().split('T')[0];
       };
 
-      const params = {
-        season: 2024,
-        limit: 100,
-        startDate: formatDate(thirtyDaysAgo),
-        endDate: formatDate(now),
-        hasMatches: true
-      };
-
-      console.log('Fetching events with params:', params);
-      const data = await api.searchEvents(params);
-      console.log('Received events data:', data);
-      setEvents(data);
+      const season = 2024;
+      const response = await ftcApi.getEvents(season);
+      console.log('Received events data:', response);
+      setEvents(response.events || []);
     } catch (err) {
       console.error('Error fetching events:', err);
       setError('Failed to fetch events. Please try again later.');
@@ -174,50 +163,47 @@ function Events() {
             <CircularProgress />
           </Grid>
         ) : (
-          /* Events Table */
+          /* Events Grid */
           <Grid item xs={12}>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Event Name</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Location</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Season</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredEvents.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        No events found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredEvents.map((event) => (
-                      <TableRow key={`${event.season}-${event.code}`}>
-                        <TableCell>{event.name}</TableCell>
-                        <TableCell>
-                          {new Date(event.dateStart).toLocaleDateString()} - {new Date(event.dateEnd).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>{event.city}, {event.stateprov}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={getStatusLabel(event.dateStart, event.dateEnd)}
-                            color={getStatusColor(event.dateStart, event.dateEnd)}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>{event.type}</TableCell>
-                        <TableCell>{event.season}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <Grid container spacing={3}>
+              {filteredEvents.length === 0 ? (
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    No events found
+                  </Paper>
+                </Grid>
+              ) : (
+                filteredEvents.map((event) => (
+                  <Grid item xs={12} sm={6} md={4} key={`2024-${event.code}`}>
+                    <Card sx={{ height: '100%' }}>
+                      <CardActionArea onClick={() => navigate(`/events/2024/${event.code}`)}>
+                        <CardContent>
+                          <Typography variant="h6" gutterBottom>
+                            {event.name}
+                          </Typography>
+                          <Typography color="textSecondary" gutterBottom>
+                            {new Date(event.dateStart).toLocaleDateString()} - {new Date(event.dateEnd).toLocaleDateString()}
+                          </Typography>
+                          <Typography gutterBottom>
+                            {event.city}, {event.stateprov}
+                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+                            <Chip
+                              label={getStatusLabel(event.dateStart, event.dateEnd)}
+                              color={getStatusColor(event.dateStart, event.dateEnd)}
+                              size="small"
+                            />
+                            <Typography variant="body2" color="textSecondary">
+                              {event.type}
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </CardActionArea>
+                    </Card>
+                  </Grid>
+                ))
+              )}
+            </Grid>
           </Grid>
         )}
       </Grid>

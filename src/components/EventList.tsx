@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
+
+const ftcApi = new FTCApi();
 
 interface Event {
     code: string;
@@ -22,7 +24,7 @@ const EventList: React.FC = () => {
         const fetchEvents = async () => {
             try {
                 const currentYear = new Date().getFullYear();
-                const response = await api.searchEvents(currentYear);
+                const response = await ftcApi.getEvents(currentYear);
                 if (response.events) {
                     setEvents(response.events);
                 } else {

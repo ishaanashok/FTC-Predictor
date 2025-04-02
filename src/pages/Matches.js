@@ -20,7 +20,9 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
+
+const ftcApi = new FTCApi();
 
 function Matches() {
   const [matches, setMatches] = useState([]);
@@ -44,7 +46,7 @@ function Matches() {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.searchEvents(null, null, true, null, null, 100);
+      const data = await ftcApi.getEvents(null);
       setEvents(data);
       if (data.length > 0) {
         setSelectedEvent(`${data[0].season}-${data[0].code}`);
@@ -186,4 +188,4 @@ function Matches() {
   );
 }
 
-export default Matches; 
+export default Matches;

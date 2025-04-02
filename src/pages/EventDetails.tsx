@@ -14,8 +14,12 @@ const EventDetails: React.FC = () => {
     const fetchEventDetails = async () => {
       try {
         setLoading(true);
-        const details = await api.getEventInfo(Number(season), eventCode || '');
-        const rankings = await api.getEventRankings(Number(season), eventCode || '');
+        const seasonNumber = season ? parseInt(season) : new Date().getFullYear();
+        if (isNaN(seasonNumber)) {
+          throw new Error('Invalid season number');
+        }
+        const details = await api.getEventInfo(seasonNumber, eventCode || '');
+        const rankings = await api.getEventRankings(seasonNumber, eventCode || '');
         setEventDetails({ ...details, rankings });
       } catch (err) {
         setError('Failed to fetch event details');
@@ -25,7 +29,7 @@ const EventDetails: React.FC = () => {
       }
     };
 
-    if (season && eventCode) {
+    if (eventCode) {
       fetchEventDetails();
     }
   }, [season, eventCode]);

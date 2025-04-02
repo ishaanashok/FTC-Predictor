@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
 import '../styles/components.css';
+
+const ftcApi = new FTCApi();
 
 interface Team {
     teamNumber: number;
@@ -20,7 +22,7 @@ const TeamList: React.FC = () => {
         const fetchTeams = async () => {
             try {
                 const currentYear = new Date().getFullYear();
-                const response = await api.searchTeams(currentYear);
+                const response = await ftcApi.getTeams(currentYear);
                 if (response.teams) {
                     setTeams(response.teams);
                 } else {

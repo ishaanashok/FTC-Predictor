@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Teams from '../components/Teams';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
 import '../styles/Teams.css';
+
+const ftcApi = new FTCApi();
 
 const TeamsPage: React.FC = () => {
   const [teams, setTeams] = useState([]);
@@ -12,7 +14,7 @@ const TeamsPage: React.FC = () => {
     const fetchTeams = async () => {
       try {
         setLoading(true);
-        const response = await api.searchTeams(2023, searchState);
+        const response = await ftcApi.getTeams(2023, { state: searchState });
         setTeams(response.teams || []);
         setError(null);
       } catch (err) {
@@ -34,6 +36,9 @@ const TeamsPage: React.FC = () => {
       teams={teams}
       onStateFilter={setSearchState}
       loading={loading}
+      onSearch={() => {}}
+      page={1}
+      onPageChange={(newPage: number) => {}}
     />
   );
 };

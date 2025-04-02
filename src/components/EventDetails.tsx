@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import api from '../services/api';
+import FTCApi from '../services/FTCApi';
+
+const ftcApi = new FTCApi();
 import '../styles/components.css';
 
 interface EventDetail {
@@ -37,8 +39,8 @@ const EventDetails: React.FC = () => {
             try {
                 const currentYear = new Date().getFullYear();
                 const [eventResponse, rankingsResponse] = await Promise.all([
-                    api.getEvent(currentYear, eventCode),
-                    api.getEventRankings(currentYear, eventCode)
+                    ftcApi.getEventInfo(currentYear, eventCode),
+                    ftcApi.getEventRankings(currentYear, eventCode)
                 ]);
 
                 if (eventResponse.events && eventResponse.events[0]) {
