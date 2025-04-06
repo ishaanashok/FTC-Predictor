@@ -28,7 +28,7 @@ function Home() {
           >
             <Box sx={{ flex: 1 }}>
               <Typography variant="h3" gutterBottom>
-                Welcome to WinSim
+                Welcome to WinK
               </Typography>
               <Typography variant="h6" sx={{ mb: 2 }}>
                 Your FTC Scouting and Prediction Platform

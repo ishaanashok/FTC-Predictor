@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Typography, Container, Paper, Grid, CircularProgress, Box } from '@mui/material';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';
 
 const EventDetails: React.FC = () => {
   const { season, eventCode } = useParams();

@@ -1,13 +1,16 @@
+# Remove the EPA-related imports and endpoint
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
 from dotenv import load_dotenv
 import base64
+from epa_calculator import EPACalculator
+from utils.api_utils import ftc_api_request
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(debug=True)
 
 # CORS middleware configuration
 app.add_middleware(
@@ -27,23 +30,26 @@ FTC_AUTH_KEY = os.getenv("FTC_API_KEY")
 auth_string = f"{FTC_USERNAME}:{FTC_AUTH_KEY}"
 AUTH_TOKEN = base64.b64encode(auth_string.encode()).decode()
 
-async def ftc_api_request(endpoint: str, params: dict = None):
-    headers = {
-        "Authorization": f"Basic {AUTH_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{FTC_API_BASE_URL}{endpoint}",
-                headers=headers,
-                params=params
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+# Remove the ftc_api_request function from main.py
+# async def ftc_api_request(endpoint: str, params: dict | None = None):
+#     headers = {
+#         "Authorization": f"Basic {AUTH_TOKEN}",
+#         "Content-Type": "application/json"
+#     }
+#     
+#     async with httpx.AsyncClient() as client:
+#         try:
+#             response = await client.get(
+#                 f"{FTC_API_BASE_URL}{endpoint}",
+#                 headers=headers,
+#                 params=params
+#             )
+#             response.raise_for_status()
+#             return response.json()
+#         except httpx.HTTPError as e:
+#             if isinstance(e, httpx.HTTPStatusError):
+#                 raise HTTPException(status_code=e.response.status_code, detail=str(e))
+#             raise HTTPException(status_code=500, detail=str(e))
 
 # Advancement endpoints
 @app.get("/api/advancement/{season}/{eventCode}")
@@ -56,7 +62,7 @@ async def get_advancement_source(season: int, eventCode: str, includeDeclines: b
 
 # League endpoints
 @app.get("/api/leagues/{season}")
-async def get_leagues(season: int, regionCode: str = None, leagueCode: str = None):
+async def get_leagues(season: int, regionCode: str | None = None, leagueCode: str | None = None):
     params = {"regionCode": regionCode, "leagueCode": leagueCode}
     return await ftc_api_request(f"/{season}/leagues", params)
 
@@ -74,7 +80,7 @@ async def get_season_summary(season: int):
     return await ftc_api_request(f"/{season}")
 
 @app.get("/api/events/{season}")
-async def get_events(season: int, eventCode: str = None, teamNumber: int = None):
+async def get_events(season: int, eventCode: str | None = None, teamNumber: int | None = None):
     params = {"eventCode": eventCode, "teamNumber": teamNumber}
     return await ftc_api_request(f"/{season}/events", params)
 
@@ -85,15 +91,17 @@ async def get_event_rankings(season: int, eventCode: str):
 @app.get("/api/teams/{season}")
 async def get_teams(
     season: int,
-    teamNumber: int = None,
-    eventCode: str = None,
-    state: str = None,
+    teamNumber: int | None = None,
+    eventCode: str | None = None,
+    state: str | None = None,
+    country: str | None = None,  # Added missing parameter
     page: int = 1
 ):
     params = {
         "teamNumber": teamNumber,
         "eventCode": eventCode,
         "state": state,
+        "country": country,
         "page": page
     }
     return await ftc_api_request(f"/{season}/teams", params)
@@ -117,6 +125,24 @@ async def get_hybrid_schedule(
 async def get_event_schedule(
     season: int,
     eventCode: str,
+    tournamentLevel: str | None = None,
+    teamNumber: int | None = None,
+    start: int = 0,
+    end: int = 999
+):
+    params = {
+        "tournamentLevel": tournamentLevel,
+        "teamNumber": teamNumber,
+        "start": start,
+        "end": end
+    }
+    return await ftc_api_request(f"/{season}/schedule/{eventCode}", params)
+
+# Update path to match official API
+@app.get("/api/matches/{season}/{eventCode}")
+async def get_event_matches(
+    season: int,
+    eventCode: str,
     tournamentLevel: str = None,
     teamNumber: int = None,
     start: int = 0,
@@ -128,4 +154,131 @@ async def get_event_schedule(
         "start": start,
         "end": end
     }
+    return await ftc_api_request(f"/{season}/matches/{eventCode}", params)
+
+# Update schedule endpoint to match API
+@app.get("/api/schedule/{season}/{eventCode}")
+async def get_event_schedule(
+    season: int,
+    eventCode: str,
+    tournamentLevel: str = "qual",
+    teamNumber: int = None,
+    start: int = 0,
+    end: int = 999
+):
+    params = {
+        "tournamentLevel": tournamentLevel,
+        "teamNumber": teamNumber,
+        "start": start,
+        "end": end
+    }
     return await ftc_api_request(f"/{season}/schedule/{eventCode}", params)
+
+@app.get("/api/teams/{teamNumber}/matches/{season}")
+async def get_team_season_matches(season: int, teamNumber: int):
+    try:
+        # Get all events for the team in the season
+        events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": teamNumber})
+        
+        all_matches = []
+        for event in events_response.get("events", []):
+            # Get both qual and playoff matches for each event
+            for tournament_level in ["qual", "playoff"]:
+                try:
+                    matches_response = await ftc_api_request(
+                        f"/{season}/matches/{event['code']}", 
+                        {
+                            "tournamentLevel": tournament_level,
+                            "teamNumber": teamNumber
+                        }
+                    )
+                    
+                    if matches_response.get("matches"):
+                        # Add event context to each match
+                        for match in matches_response["matches"]:
+                            match["eventCode"] = event["code"]
+                            match["eventName"] = event["name"]
+                            match["tournamentLevel"] = tournament_level
+                            all_matches.append(match)
+                except Exception as e:
+                    print(f"Error fetching {tournament_level} matches for event {event['code']}: {str(e)}")
+                    continue
+
+        return {"matches": all_matches}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/teams/{teamNumber}/historical-matches")
+async def get_team_historical_matches(teamNumber: int):
+    all_seasons_matches = {}
+    current_season = 2024
+    
+    # Fetch data for recent seasons
+    for season in range(2020, current_season + 1):
+        try:
+            season_matches = await get_team_season_matches(season, teamNumber)
+            all_seasons_matches[season] = season_matches["matches"]
+        except HTTPException as e:
+            if e.status_code != 404:  # Ignore 404s for seasons without data
+                raise e
+            all_seasons_matches[season] = []
+    
+    return {"matches": all_seasons_matches}
+
+# Remove this endpoint
+# @app.get("/api/teams/{season}/{team_number}/epa")
+# async def get_team_epa(season: int, team_number: int):
+#     ...
+
+# Keep all other existing endpoints
+
+@app.get("/api/teams/{season}/{teamNumber}/matches")
+async def get_team_matches(season: int, teamNumber: int):
+    try:
+        # First get all events for this team
+        events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": teamNumber})
+        
+        all_matches = []
+        for event in events_response.get("events", []):
+            # For each event, get the team's matches
+            matches_response = await ftc_api_request(
+                f"/{season}/schedule/{event['code']}", 
+                {"teamNumber": teamNumber}
+            )
+            
+            if matches_response.get("matches"):
+                # Add event context to each match
+                for match in matches_response["matches"]:
+                    match["eventCode"] = event["code"]
+                    match["eventName"] = event["name"]
+                    all_matches.extend([match])
+
+        return {"matches": all_matches}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/teams/{teamNumber}/historical-matches")
+async def get_team_historical_matches(teamNumber: int):
+    all_seasons_matches = {}
+    
+    # Fetch data from 2020 to 2024
+    for season in range(2020, 2025):
+        try:
+            season_matches = await get_team_matches(season, teamNumber)
+            all_seasons_matches[season] = season_matches["matches"]
+        except HTTPException as e:
+            if e.status_code != 404:  # Ignore 404s for seasons without data
+                raise e
+            all_seasons_matches[season] = []
+    
+    return {"matches": all_seasons_matches}
+
+@app.get("/api/teams/{teamNumber}/historical-epa")
+async def get_team_historical_epa(teamNumber: int):
+    try:
+        calculator = EPACalculator()
+        matches = await calculator.get_team_matches(teamNumber)
+        historical_epa = calculator.calculate_historical_epa(matches, teamNumber)
+        return {"teamNumber": teamNumber, "historicalEPA": historical_epa}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,25 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';  // Fixed import path
 import '../styles/Teams.css';
 import { Button } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 
 const ftcApi = new FTCApi();
 
 function Teams() {
+    const navigate = useNavigate();
     const [teams, setTeams] = useState([]);
     const [filteredTeams, setFilteredTeams] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [teamNumber, setTeamNumber] = useState('');
     const [teamName, setTeamName] = useState('');
-    const [page, setPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState(1);
     const [allTeams, setAllTeams] = useState([]);
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter') {
+            handleSearch();
+        }
+    };
+
+    const handleSearch = async () => {
+        const searchParams = {};
+        if (teamNumber) {
+            searchParams.teamNumber = teamNumber;
+        } else if (teamName) {
+            searchParams.search = teamName;
+        }
+        await fetchTeams(searchParams);
+    };
 
     const fetchTeams = async (searchParams = {}) => {
         try {
             setLoading(true);
             if (searchParams.teamNumber) {
-                const params = { page, ...searchParams };
+                const params = { page: currentPage, ...searchParams };
                 const response = await ftcApi.getTeams(2024, params);
                 setTeams(response.teams || []);
                 setFilteredTeams(response.teams || []);
@@ -33,7 +51,7 @@ function Teams() {
                 setFilteredTeams(filtered);
                 setTeams(filtered);
             } else {
-                const params = { page };
+                const params = { page: currentPage };
                 const response = await ftcApi.getTeams(2024, params);
                 setTeams(response.teams || []);
                 setFilteredTeams(response.teams || []);
@@ -48,25 +66,7 @@ function Teams() {
 
     useEffect(() => {
         fetchTeams();
-    }, [page]);
-
-    const handleSearch = () => {
-        const searchParams = {};
-        if (teamNumber) {
-            searchParams.teamNumber = teamNumber;
-        } else if (teamName) {
-            searchParams.search = teamName;
-        }
-        fetchTeams(searchParams);
-    };
-
-
-
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter' && (teamNumber || teamName)) {
-            handleSearch();
-        }
-    };
+    }, [currentPage]);
 
     return (
         <div className="teams-container">
@@ -115,7 +115,11 @@ function Teams() {
                 <>
                     <div className="teams-grid">
                         {filteredTeams.map(team => (
-                            <div key={team.teamNumber} className="team-card">
+                            <div 
+                                key={team.teamNumber} 
+                                className="team-card"
+                                onClick={() => navigate(`/team/${team.teamNumber}`)}
+                            >
                                 <h3>Team {team.teamNumber}</h3>
                                 <p className="team-name">{team.nameShort}</p>
                                 <p className="team-location">{team.city}, {team.stateProv}</p>
@@ -126,14 +130,14 @@ function Teams() {
 
                     <div className="pagination">
                         <button 
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1 || loading}
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1 || loading}
                         >
                             Previous
                         </button>
-                        <span>Page {page}</span>
+                        <span>Page {currentPage}</span>
                         <button 
-                            onClick={() => setPage(p => p + 1)}
+                            onClick={() => setCurrentPage(p => p + 1)}
                             disabled={teams.length === 0 || loading}
                         >
                             Next

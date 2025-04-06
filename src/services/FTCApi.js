@@ -5,7 +5,7 @@ const BASE_URL = 'http://localhost:8000/api';
 class FTCApi {
     constructor() {
         this.axiosInstance = axios.create({
-            baseURL: BASE_URL,
+            baseURL: 'http://localhost:8000/api',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
@@ -64,20 +64,114 @@ class FTCApi {
         return this.request(`/events/${season}`, { eventCode, teamNumber });
     }
 
-    async getTeams(season, options = {}) {
-        return this.request(`/teams/${season}`, options);
+    async getTeams(season, params = {}) {
+        return this.request(`/teams/${season}`, params);
     }
 
-    // Schedule methods
-    async getHybridSchedule(season, eventCode, tournamentLevel, start = 0, end = 999) {
-        return this.request(
-            `/schedule/${season}/${eventCode}/${tournamentLevel}/hybrid`,
-            { start, end }
-        );
+    // Remove getTeamEPA as it's no longer needed
+    async getTeamMatches(season, teamNumber) {
+        return this.request(`/teams/${season}/${teamNumber}/matches`);
     }
 
-    async getEventSchedule(season, eventCode, options = {}) {
-        return this.request(`/schedule/${season}/${eventCode}`, options);
+    async getEventSchedule(season, eventCode, tournamentLevel = 'qual', teamNumber = 0, start = 0, end = 999) {
+        const params = {
+            tournamentLevel,
+            teamNumber,
+            start,
+            end
+        };
+        return this.request(`/schedule/${season}/${eventCode}`, params);
+    }
+
+    async getEventMatches(season, eventCode, tournamentLevel = 'qual', teamNumber = null) {
+        const params = {
+            tournamentLevel,
+            teamNumber
+        };
+        return this.request(`/matches/${season}/${eventCode}`, params);
+    }
+
+    async getTeamSeasonMatches(season, teamNumber) {
+        return this.request(`/teams/${teamNumber}/matches/${season}`);
+    }
+
+    async getHistoricalMatches(teamNumber) {
+        return this.request(`/teams/${teamNumber}/historical-matches`);
+    }
+
+    async getTeamEventResults(season, teamNumber) {
+        try {
+            const eventsResponse = await this.getEvents(season, null, teamNumber);
+            const events = eventsResponse.events || [];
+            
+            let allMatches = [];
+            
+            for (const event of events) {
+                const [qualMatches, playoffMatches] = await Promise.all([
+                    this.getEventMatches(season, event.code, 'qual'),
+                    this.getEventMatches(season, event.code, 'playoff')
+                ]);
+
+                const matches = [
+                    ...(qualMatches.matches || []),
+                    ...(playoffMatches.matches || [])
+                ];
+
+                // Fixed the team array access
+                const processedMatches = matches
+                    .filter(match => {
+                        if (!match.teams || !match.teams.red || !match.teams.blue) return false;
+                        const allTeams = [
+                            ...(Array.isArray(match.teams.red) ? match.teams.red : [match.teams.red]),
+                            ...(Array.isArray(match.teams.blue) ? match.teams.blue : [match.teams.blue])
+                        ];
+                        return allTeams.includes(teamNumber.toString());
+                    })
+                    .map(match => ({
+                        matchNumber: match.matchNumber,
+                        tournamentLevel: match.tournamentLevel,
+                        description: match.description,
+                        red: {
+                            teams: Array.isArray(match.teams.red) ? match.teams.red : [match.teams.red],
+                            score: match.scoreRedFinal || 0
+                        },
+                        blue: {
+                            teams: Array.isArray(match.teams.blue) ? match.teams.blue : [match.teams.blue],
+                            score: match.scoreBlueFinal || 0
+                        },
+                        eventCode: event.code,
+                        eventName: event.name
+                    }));
+
+                allMatches = [...allMatches, ...processedMatches];
+            }
+            
+            return { matches: allMatches };
+        } catch (error) {
+            console.error('Error fetching team event results:', error);
+            throw error;
+        }
+    }
+
+    async getHistoricalMatches(teamNumber) {
+        const seasons = [2020, 2021, 2022, 2023, 2024];
+        const allMatches = {};
+        
+        for (const season of seasons) {
+            try {
+                const results = await this.getTeamEventResults(season, teamNumber);
+                allMatches[season] = results.matches;
+            } catch (error) {
+                console.warn(`No data found for season ${season}`);
+                allMatches[season] = [];
+            }
+        }
+        
+        return { matches: allMatches };
+    }
+
+    async getHistoricalEPA(teamNumber) {
+            return this.request(`/teams/${teamNumber}/historical-epa`);
     }
 }
 

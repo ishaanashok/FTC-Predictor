@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Teams from '../components/Teams';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';
 import '../styles/Teams.css';
 
 const ftcApi = new FTCApi();

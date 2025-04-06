@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Grid, Card, CardContent, Typography, CardActionArea } from '@mui/material';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';
 
 const Events: React.FC = () => {
   const [events, setEvents] = useState([]);

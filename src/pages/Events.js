@@ -19,7 +19,7 @@ import {
   CardActionArea,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';
 
 function Events() {
   const navigate = useNavigate();
@@ -28,37 +28,41 @@ function Events() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
-  const [filter, setFilter] = useState('all'); // all, upcoming, past
+  const [filter, setFilter] = useState('upcoming');
 
   useEffect(() => {
-    fetchEvents();
+    let mounted = true;
+
+    const loadEvents = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const season = 2024;
+        const response = await ftcApi.getEvents(season);
+        
+        if (mounted) {
+          console.log('Received events data:', response);
+          setEvents(response.events || []);
+        }
+      } catch (err) {
+        if (mounted) {
+          console.error('Error fetching events:', err);
+          setError('Failed to fetch events. Please try again later.');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadEvents();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
-
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get current date
-      const now = new Date();
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      const formatDate = (date) => {
-        return date.toISOString().split('T')[0];
-      };
-
-      const season = 2024;
-      const response = await ftcApi.getEvents(season);
-      console.log('Received events data:', response);
-      setEvents(response.events || []);
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      setError('Failed to fetch events. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSearch = (event) => {
     setSearchText(event.target.value);
@@ -95,7 +99,7 @@ function Events() {
       (event.state?.toLowerCase() || '').includes(searchText.toLowerCase());
     
     const status = getStatusLabel(event.dateStart, event.dateEnd).toLowerCase();
-    const matchesFilter = filter === 'all' || status === filter;
+    const matchesFilter = filter === 'all' || status === filter.toLowerCase();
 
     return matchesSearch && matchesFilter;
   }).sort((a, b) => {
@@ -121,9 +125,9 @@ function Events() {
               onChange={handleFilterChange}
               label="Filter by Status"
             >
+              <MenuItem value="upcoming">Upcoming Events</MenuItem>
               <MenuItem value="all">All Events</MenuItem>
-              <MenuItem value="upcoming">Upcoming</MenuItem>
-              <MenuItem value="past">Past</MenuItem>
+              <MenuItem value="past">Past Events</MenuItem>
             </Select>
           </FormControl>
         </Grid>

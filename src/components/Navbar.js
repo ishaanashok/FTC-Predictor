@@ -40,7 +40,7 @@ function Navbar() {
               fontWeight: 'bold'
             }}
           >
-            WinSim
+            WinK
           </Typography>
         </Box>
 

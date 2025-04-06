@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import FTCApi from '../services/FTCApi';
+import FTCApi from '../services/ftcapi';
 
 const ftcApi = new FTCApi();
 
