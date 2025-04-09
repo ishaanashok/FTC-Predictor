@@ -22,14 +22,15 @@ function TeamDetails() {
                 const [teamResponse, eventsResponse, epaResponse] = await Promise.all([
                     ftcApi.getTeams(2024, { teamNumber }),
                     ftcApi.getEvents(2024, null, teamNumber),
-                    ftcApi.getHistoricalEPA(teamNumber)
+                    ftcApi.getHistoricalEPA(teamNumber)  // Uncomment this line
                 ]);
 
                 if (teamResponse.teams?.length > 0) {
                     setTeamInfo(teamResponse.teams[0]);
                 }
                 setEvents(eventsResponse.events || []);
-                setEpa(epaResponse.historicalEPA?.toFixed(2) || '0.00');
+                // Add null check for EPA response
+                setEpa(epaResponse?.historicalEPA?.toFixed(2) || '0.00');
             } catch (err) {
                 setError('Failed to fetch team data');
                 console.error('Error:', err);

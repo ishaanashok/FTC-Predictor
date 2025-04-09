@@ -1,12 +1,18 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, styled } from '@mui/material';
 import { Link } from 'react-router-dom';
+
+const StyledLink = styled(Link)(({ theme }) => ({
+  flexGrow: 1,
+  textDecoration: 'none',
+  color: theme.palette.primary.contrastText
+}));
 
 const Navbar: React.FC = () => {
   return (
     <AppBar position="static">
       <Toolbar>
-        <Typography variant="h6" component={Link} to="/" style={{ flexGrow: 1, textDecoration: 'none', color: 'white' }}>
+        <Typography variant="h6" component={StyledLink} to="/">
           FTC Predictor
         </Typography>
         <Button color="inherit" component={Link} to="/teams">Teams</Button>

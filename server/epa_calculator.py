@@ -18,7 +18,7 @@ class EPACalculator:
     async def get_team_matches(self, team_number: int) -> dict:
         all_matches = {}
         
-        for season in range(2020, 2025):
+        for season in range(2023, 2025):
             try:
                 events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": team_number})
                 season_matches = []

@@ -173,6 +173,14 @@ class FTCApi {
     async getHistoricalEPA(teamNumber) {
             return this.request(`/teams/${teamNumber}/historical-epa`);
     }
+
+    async getMatches(season, eventCode) {
+        const response = await fetch(`${this.baseUrl}/api/v2.0/${season}/matches/${eventCode}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch matches');
+        }
+        return await response.json();
+    }
 }
 
 export default FTCApi;
