@@ -181,6 +181,37 @@ class FTCApi {
         }
         return await response.json();
     }
+
+    async getPrediction( season, eventCode, redTeams, blueTeams, teamEpas, matchNumber) {
+        try {
+            const response = await this.axiosInstance.post('/match-prediction', {
+                season,
+                eventCode,
+                redTeams,
+                blueTeams,
+                teamEpas,
+                matchNumber,
+            });
+
+            return response.data.prediction;
+        } catch (error) {
+            console.error('Error getting match prediction:', error);
+            return null;
+        }
+    }
+
+    async getEventPredictionsAndEPA(season, eventCode) {
+        try {
+            const response = await this.axiosInstance.post('/event-predictions-epa', {
+                season,
+                eventCode
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error getting event predictions and EPA:', error);
+            throw error;
+        }
+    }
 }
 
 export default FTCApi;

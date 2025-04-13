@@ -18,6 +18,8 @@ import {
   TableSortLabel
 } from '@mui/material';
 import FTCApi from '../services/ftcapi';
+import { IconButton } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 const EventDetails = () => {
   const { season, eventCode } = useParams();
@@ -31,56 +33,117 @@ const EventDetails = () => {
   const [teamEPAs, setTeamEPAs] = useState({});
   const ftcApi = new FTCApi();
 
-  useEffect(() => {
-    const fetchEventData = async () => {
-      try {
-        setLoading(true);
-        const [details, teamsData, matchesData] = await Promise.all([
-          ftcApi.getEventInfo(Number(season), eventCode),
-          ftcApi.getTeams(Number(season), { eventCode }),
-          ftcApi.getEventMatches(Number(season), eventCode)
-        ]);
-        
-        setEventDetails(details);
-        const sortedTeams = (teamsData.teams || []).sort((a, b) => a.teamNumber - b.teamNumber);
-        setTeams(sortedTeams);
-        setMatches(matchesData.matches || []);
-      } catch (err) {
-        setError('Failed to fetch event details');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchEventData = async () => {
+        try {
+            setLoading(true);
+            setError(null); // Reset error state
+            console.log('Fetching data for season:', season, 'event:', eventCode);
+            
+            const eventData = await ftcApi.getEventPredictionsAndEPA(Number(season), eventCode);
+            
+            if (!eventData) {
+                throw new Error('No data received from server');
+            }
+            
+            console.log('Received event data:', eventData);
+            setEventDetails(eventData.eventDetails);
+            setTeams(eventData.teams || []);
+            setTeamEPAs(eventData.teamEPAs || {});
+            
+            const matchesWithPredictions = eventData.matches.map(match => ({
+                ...match,
+                prediction: eventData.predictions.find(p => p.matchNumber === match.matchNumber)?.prediction
+            }));
+            
+            setMatches(matchesWithPredictions);
+        } catch (err) {
+            const errorMessage = err.response?.data?.detail || err.message || 'Failed to fetch event details';
+            setError(errorMessage);
+            console.error('Error in fetchEventData:', err);
+        } finally {
+            setLoading(false);
+        }
     };
 
+  useEffect(() => {
     if (season && eventCode) {
       fetchEventData();
     }
   }, [season, eventCode]);
 
   const sortedMatches = React.useMemo(() => {
-    return [...matches].sort((a, b) => {
+    // Filter for qualification matches and sort by match number
+    const qualificationMatches = matches.filter(match => 
+      match.tournamentLevel?.toUpperCase() === "QUALIFICATION"
+    );
+    
+    return [...qualificationMatches].sort((a, b) => {
       const matchNumA = parseInt(a.matchNumber);
       const matchNumB = parseInt(b.matchNumber);
       return matchNumA - matchNumB;
     });
   }, [matches]);
 
-  if (loading) return <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh"><CircularProgress /></Box>;
+  const [loadingMessage, setLoadingMessage] = useState('Calculating EPAs...');
+  const loadingMessages = [
+    'Give it a second...',
+    'Analyzing your brainwaves...',
+    'Decrypting your thoughts...',
+    'Crunching the numbers...',
+    'Reading the crystal ball...',
+    'Consulting the robot overlords...',
+  ];
+  
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setLoadingMessage(prevMessage => {
+          const currentIndex = loadingMessages.indexOf(prevMessage);
+          const nextIndex = (currentIndex + 1) % loadingMessages.length;
+          return loadingMessages[nextIndex];
+        });
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+  if (loading) return (
+    <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="80vh">
+      <CircularProgress sx={{ mb: 2 }} />
+      <Typography variant="h6" color="text.secondary">
+        {loadingMessage}
+      </Typography>
+    </Box>
+  );
   if (error) return <Container><Typography color="error">{error}</Typography></Container>;
+
+  const handleRefresh = async () => {
+    if (season && eventCode) {
+      setLoading(true);
+      await fetchEventData();
+    }
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          {eventDetails?.events[0]?.name || 'Event Details'}
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h4">
+            {eventDetails?.events[0]?.name || 'Event Details'}
+          </Typography>
+          <IconButton 
+            onClick={handleRefresh} 
+            disabled={loading}
+            sx={{ ml: 2 }}
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Box>
 
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Event Details" />
           <Tab label="Matches" />
         </Tabs>
-
+  
         {activeTab === 0 ? (
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -101,6 +164,7 @@ const EventDetails = () => {
                       <TableCell>Team Name</TableCell>
                       <TableCell>Organization</TableCell>
                       <TableCell>Location</TableCell>
+                      <TableCell>EPA</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -110,6 +174,7 @@ const EventDetails = () => {
                         <TableCell>{team.nameShort || team.nameFull}</TableCell>
                         <TableCell>{team.schoolName}</TableCell>
                         <TableCell>{`${team.city}, ${team.stateProv}`}</TableCell>
+                        <TableCell>{teamEPAs[team.teamNumber]?.toFixed(1) || '0.0'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -125,15 +190,20 @@ const EventDetails = () => {
                   <TableCell>Match</TableCell>
                   <TableCell>Red Alliance</TableCell>
                   <TableCell>Blue Alliance</TableCell>
+                  <TableCell>Predicted Winner</TableCell>
+                  <TableCell>Win Probability</TableCell>
                   <TableCell align="right">Red Score</TableCell>
                   <TableCell align="right">Blue Score</TableCell>
-                  <TableCell>Winner</TableCell>
+                  <TableCell>Actual Winner</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedMatches.map((match) => {
                   const redWon = match.scoreRedFinal > match.scoreBlueFinal;
                   const blueWon = match.scoreBlueFinal > match.scoreRedFinal;
+                  const prediction = match.prediction || {};
+                  const winProb = prediction.predicted_winner === 'Red' ? 
+                    prediction.red_win_probability : prediction.blue_win_probability;
                   
                   return (
                     <TableRow key={match.matchNumber}>
@@ -150,6 +220,8 @@ const EventDetails = () => {
                           .map(team => team.teamNumber)
                           .join(', ')}
                       </TableCell>
+                      <TableCell>{prediction.predicted_winner || 'N/A'}</TableCell>
+                      <TableCell>{winProb ? `${(winProb * 100).toFixed(1)}%` : 'N/A'}</TableCell>
                       <TableCell align="right" sx={{ color: redWon ? 'success.main' : 'inherit' }}>
                         {match.scoreRedFinal}
                       </TableCell>

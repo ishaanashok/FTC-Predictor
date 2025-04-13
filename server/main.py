@@ -1,5 +1,8 @@
 # Remove the EPA-related imports and endpoint
 from fastapi import FastAPI, HTTPException
+import asyncio  # Add this import at the top with other imports
+import time  # Add this import
+
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
@@ -225,36 +228,106 @@ async def get_team_historical_matches(teamNumber: int):
     
     return {"matches": all_seasons_matches}
 
-# Remove this endpoint
-# @app.get("/api/teams/{season}/{team_number}/epa")
-# async def get_team_epa(season: int, team_number: int):
-#     ...
-
-# Keep all other existing endpoints
-
-@app.get("/api/teams/{season}/{teamNumber}/matches")
-async def get_team_matches(season: int, teamNumber: int):
+@app.post("/api/event-predictions-epa")
+async def get_event_predictions_epa(data: dict):
     try:
-        # First get all events for this team
-        events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": teamNumber})
+        season = data['season']
+        event_code = data['eventCode']
         
-        all_matches = []
-        for event in events_response.get("events", []):
-            # For each event, get the team's matches
-            matches_response = await ftc_api_request(
-                f"/{season}/schedule/{event['code']}", 
-                {"teamNumber": teamNumber}
+        print(f"Processing request for season {season}, event {event_code}")
+        
+        # Get all data in parallel
+        try:
+            event_info, teams_data, matches_data = await asyncio.gather(
+                ftc_api_request(f"/{season}/events", {"eventCode": event_code}),
+                ftc_api_request(f"/{season}/teams", {"eventCode": event_code}),
+                ftc_api_request(f"/{season}/matches/{event_code}"),
+                return_exceptions=True
             )
             
-            if matches_response.get("matches"):
-                # Add event context to each match
-                for match in matches_response["matches"]:
-                    match["eventCode"] = event["code"]
-                    match["eventName"] = event["name"]
-                    all_matches.extend([match])
-
-        return {"matches": all_matches}
+            # Check for exceptions in gathered results
+            for result in [event_info, teams_data, matches_data]:
+                if isinstance(result, Exception):
+                    raise result
+                    
+        except Exception as e:
+            print(f"Error fetching initial data: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error fetching event data: {str(e)}")
+        
+        print(f"Found {len(teams_data.get('teams', []))} teams")
+        
+        # Get EPA for all teams
+        calculator = EPACalculator()
+        epa_tasks = []
+        teams_list = teams_data.get('teams', [])
+        
+        try:
+            print(f"Starting EPA calculations for {len(teams_list)} teams")
+            start_time = time.time()
+            
+            for team in teams_list:
+                try:
+                    print(f"Fetching matches for team {team['teamNumber']}")
+                    team_start_time = time.time()
+                    
+                    matches = await calculator.get_team_matches(team['teamNumber'])
+                    team_fetch_time = time.time() - team_start_time
+                    print(f"Fetched matches for team {team['teamNumber']} in {team_fetch_time:.2f} seconds")
+                    
+                    epa_start_time = time.time()
+                    epa = calculator.calculate_historical_epa(matches, team['teamNumber'])
+                    epa_calc_time = time.time() - epa_start_time
+                    print(f"Calculated EPA for team {team['teamNumber']} in {epa_calc_time:.2f} seconds")
+                    
+                    epa_tasks.append({"teamNumber": team['teamNumber'], "historicalEPA": epa})
+                    
+                except Exception as e:
+                    print(f"Error processing team {team['teamNumber']}: {str(e)}")
+                    continue
+            
+            total_time = time.time() - start_time
+            print(f"Completed EPA calculations for all teams in {total_time:.2f} seconds")
+        except Exception as e:
+            print(f"Error processing team EPAs: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error calculating team EPAs: {str(e)}")
+        
+        # Create EPA mapping
+        team_epas = {str(team['teamNumber']): epa_result['historicalEPA'] 
+                    for team, epa_result in zip(teams_data.get('teams', []), epa_tasks)}
+        
+        print(f"Calculated EPAs for {len(team_epas)} teams")
+        
+        # Calculate predictions for all matches
+        predictions = []
+        try:
+            for match in matches_data.get('matches', []):
+                red_teams = [team['teamNumber'] for team in match['teams'] 
+                            if 'Red' in team['station']]
+                blue_teams = [team['teamNumber'] for team in match['teams'] 
+                             if 'Blue' in team['station']]
+                
+                prediction = calculator.calculate_match_win_probability(
+                    red_teams, blue_teams, team_epas
+                )
+                
+                predictions.append({
+                    'matchNumber': match['matchNumber'],
+                    'prediction': prediction
+                })
+                
+        except Exception as e:
+            print(f"Error calculating predictions: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error calculating match predictions: {str(e)}")
+        
+        return {
+            'eventDetails': event_info,
+            'teams': teams_data.get('teams', []),
+            'matches': matches_data.get('matches', []),
+            'teamEPAs': team_epas,
+            'predictions': predictions
+        }
     except Exception as e:
+        print(f"Unexpected error in get_event_predictions_epa: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/teams/{teamNumber}/historical-matches")
@@ -281,4 +354,26 @@ async def get_team_historical_epa(teamNumber: int):
         historical_epa = calculator.calculate_historical_epa(matches, teamNumber)
         return {"teamNumber": teamNumber, "historicalEPA": historical_epa}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/match-prediction")
+async def get_match_prediction(data: dict):
+    try:
+        calculator = EPACalculator()
+        prediction = calculator.calculate_match_win_probability(
+            data['redTeams'], 
+            data['blueTeams'], 
+            data['teamEpas']
+        )
+        
+        return {
+            "season": data['season'],
+            "eventCode": data['eventCode'],
+            "matchNumber": data['matchNumber'],
+            "redTeams": data['redTeams'],
+            "blueTeams": data['blueTeams'],
+            "prediction": prediction
+        }
+    except Exception as e:
+        print(f"Error in match prediction: {e}")
         raise HTTPException(status_code=500, detail=str(e))

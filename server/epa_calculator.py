@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
 import base64
+import asyncio
 import httpx
+import math  # Add this import
 from fastapi import HTTPException
 from utils.api_utils import ftc_api_request
 
@@ -10,47 +12,67 @@ class EPACalculator:
         self.year_weights = {
             2024: 1.0,
             2023: 0.7,
-            2022: 0.5,
-            2021: 0.3,
-            2020: 0.2
+            2022: 0.5
         }
+        self.k = 12  # EPA scaling factor for win probability
 
     async def get_team_matches(self, team_number: int) -> dict:
         all_matches = {}
         
-        for season in range(2023, 2025):
+        # Only fetch from 2022 onwards as older data seems unreliable
+        for season in range(2022, 2025):
             try:
                 events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": team_number})
-                season_matches = []
                 
-                # Loop through each event
+                if not events_response.get("events"):
+                    continue
+                
+                # Prepare parallel requests for qualification matches only
+                match_tasks = []
                 for event in events_response.get("events", []):
-                    # Get both qual and playoff matches
-                    for tournament_level in ["qual", "playoff"]:
-                        try:
-                            matches_response = await ftc_api_request(
-                                f"/{season}/matches/{event['code']}", 
-                                {
-                                    "tournamentLevel": tournament_level,
-                                    "teamNumber": team_number
-                                }
-                            )
-                            
-                            if matches_response.get("matches"):
-                                for match in matches_response["matches"]:
-                                    match["eventCode"] = event["code"]
-                                    match["eventName"] = event["name"]
-                                    season_matches.append(match)
-                                    
-                        except Exception as e:
-                            print(f"Error fetching {tournament_level} matches for event {event['code']}: {str(e)}")
-                            continue
+                    # Skip if event code is missing
+                    if not event.get('code'):
+                        continue
+                        
+                    match_tasks.append({
+                        'event': event,
+                        'task': ftc_api_request(
+                            f"/{season}/matches/{event['code']}", 
+                            {
+                                "tournamentLevel": "qual",
+                                "teamNumber": team_number
+                            }
+                        )
+                    })
                 
-                all_matches[season] = season_matches
+                if not match_tasks:
+                    continue
+                
+                # Execute all requests in parallel with timeout
+                match_results = await asyncio.gather(
+                    *[task['task'] for task in match_tasks],
+                    return_exceptions=True
+                )
+                
+                # Process results and filter for Qualification matches
+                season_matches = []
+                for result, task_info in zip(match_results, match_tasks):
+                    if isinstance(result, Exception):
+                        continue
+                        
+                    if result.get("matches"):
+                        for match in result["matches"]:
+                            # Only include matches with tournamentLevel set to "QUALIFICATION"
+                            if match.get('tournamentLevel', '').upper() == "QUALIFICATION":
+                                match["eventCode"] = task_info['event']['code']
+                                match["eventName"] = task_info['event']['name']
+                                season_matches.append(match)
+                
+                if season_matches:
+                    all_matches[season] = season_matches
                 
             except Exception as e:
-                print(f"Error fetching season {season} data: {str(e)}")
-                all_matches[season] = []
+                continue
         
         return all_matches
 
@@ -138,3 +160,37 @@ class EPACalculator:
                 continue
 
         return weighted_sum / total_weight if total_weight > 0 else 0.0
+
+    def calculate_match_win_probability(self, red_alliance: list, blue_alliance: list, team_epas: dict) -> dict:
+        try:
+            # Sum EPA scores for each alliance
+            red_epa = sum(team_epas.get(str(team), 0.0) for team in red_alliance)
+            blue_epa = sum(team_epas.get(str(team), 0.0) for team in blue_alliance)
+            print(f"Red EPA: {red_epa}, Blue EPA: {blue_epa}")
+            
+            # Calculate EPA difference and normalize
+            epa_diff = red_epa - blue_epa
+            avg_epa = (red_epa + blue_epa) / 2
+            normalized_diff = epa_diff / (avg_epa + 1e-6)  # Avoid division by zero
+            
+            # Use sigmoid function with adjusted scaling
+            k = 0.5  # Scaling factor to make probabilities more reasonable
+            red_win_prob = 1 / (1 + math.exp(-normalized_diff / k))
+            
+            # Clamp probabilities to avoid extreme values
+            red_win_prob = max(0.05, min(0.95, red_win_prob))
+            
+            return {
+                'red_win_probability': round(red_win_prob, 3),
+                'blue_win_probability': round(1 - red_win_prob, 3),
+                'predicted_winner': 'Red' if red_win_prob > 0.5 else 'Blue',
+                'win_margin': abs(red_epa - blue_epa)
+            }
+        except Exception as e:
+            print(f"Error calculating match win probability: {e}")
+            return {
+                'red_win_probability': 0.5,
+                'blue_win_probability': 0.5,
+                'predicted_winner': 'Tie',
+                'win_margin': 0
+            }
