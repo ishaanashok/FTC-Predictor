@@ -5,3 +5,5 @@ __pycache__/
 build/
 .DS_Store
 .vscode/settings.json
+FTC Events API.postman_collection.json
+.vscode/launch.json
