@@ -1,49 +1,115 @@
+import pytest
 import asyncio
-import logging
+from unittest.mock import patch, MagicMock
 from epa_calculator import EPACalculator
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+@pytest.fixture
+def calculator():
+    return EPACalculator()
 
-async def test_team_epa():
-    calculator = EPACalculator()
-    team_number = 5773
+@pytest.mark.asyncio
+async def test_get_team_matches_success(calculator):
+    # Mock successful API responses
+    mock_events_response = {
+        "events": [
+            {
+                "code": "TEST_EVENT_1",
+                "name": "Test Event 1",
+                "startDate": "2024-01-01"
+            }
+        ]
+    }
+    
+    mock_matches_response = {
+        "matches": [
+            {
+                "matchNumber": 1,
+                "tournamentLevel": "QUALIFICATION",
+                "teams": [
+                    {"teamNumber": 12345, "station": "Red1"},
+                    {"teamNumber": 67890, "station": "Blue1"}
+                ],
+                "scoreRedFinal": 100,
+                "scoreBlueFinal": 90
+            }
+        ]
+    }
 
-    try:
-        logger.debug(f"Starting EPA calculation for team {team_number}")
-        matches = await calculator.get_team_matches(team_number)
-        logger.debug(f"Retrieved matches for all seasons")
+    with patch('epa_calculator.ftc_api_request') as mock_api:
+        mock_api.side_effect = [
+            mock_events_response,  # First call for events
+            mock_matches_response  # Second call for matches
+        ]
+        
+        result = await calculator.get_team_matches(12345)
+        
+        assert isinstance(result, dict)
+        assert 2024 in result
+        assert len(result[2024]) == 1
+        assert result[2024][0]['matchNumber'] == 1
+        assert result[2024][0]['eventCode'] == 'TEST_EVENT_1'
+        assert result[2024][0]['eventName'] == 'Test Event 1'
 
-        for season, season_matches in matches.items():
-            logger.debug(f"\n{'='*50}")
-            logger.debug(f"Processing Season {season}")
-            logger.debug(f"Found {len(season_matches)} matches")
-            
-            if season_matches:
-                season_epa = calculator.calculate_season_epa(season_matches, team_number)
-                logger.debug(f"Season EPA calculated: {season_epa:.2f}")
+@pytest.mark.asyncio
+async def test_get_team_matches_with_start_date(calculator):
+    mock_events_response = {
+        "events": [
+            {
+                "code": "FUTURE_EVENT",
+                "name": "Future Event",
+                "startDate": "2024-12-01"
+            },
+            {
+                "code": "PAST_EVENT",
+                "name": "Past Event",
+                "startDate": "2024-01-01"
+            }
+        ]
+    }
 
-                for match in season_matches:
-                    logger.debug(f"\nMatch Details:")
-                    logger.debug(f"Event: {match.get('eventName')}")
-                    logger.debug(f"Match: {match.get('description')}")
-                    logger.debug(f"Tournament Level: {match.get('tournamentLevel')}")
-                    logger.debug(f"Red Score: {match.get('scoreRedFinal')}")
-                    logger.debug(f"Blue Score: {match.get('scoreBlueFinal')}")
-                    
-                    # Calculate and log individual match EPA
-                    match_epa = calculator.calculate_match_epa(match, team_number)
-                    logger.debug(f"Match EPA: {match_epa:.2f}")
+    with patch('epa_calculator.ftc_api_request') as mock_api:
+        mock_api.side_effect = [mock_events_response]
+        
+        result = await calculator.get_team_matches(12345, start_date="2024-06-01")
+        
+        assert isinstance(result, dict)
+        # Should only include events before start_date
+        mock_api.assert_called_once()
 
-        historical_epa = calculator.calculate_historical_epa(matches, team_number)
-        logger.debug(f"\nFinal Historical EPA for team {team_number}: {historical_epa:.2f}")
+@pytest.mark.asyncio
+async def test_get_team_matches_empty_response(calculator):
+    mock_empty_response = {"events": []}
 
-    except Exception as e:
-        logger.error(f"Error during testing: {str(e)}", exc_info=True)
+    with patch('epa_calculator.ftc_api_request') as mock_api:
+        mock_api.return_value = mock_empty_response
+        
+        result = await calculator.get_team_matches(12345)
+        
+        assert isinstance(result, dict)
+        assert len(result) == 0
 
-if __name__ == "__main__":
-    asyncio.run(test_team_epa())
+@pytest.mark.asyncio
+async def test_get_team_matches_api_error(calculator):
+    with patch('epa_calculator.ftc_api_request') as mock_api:
+        mock_api.side_effect = Exception("API Error")
+        
+        result = await calculator.get_team_matches(12345)
+        
+        assert isinstance(result, dict)
+        assert len(result) == 0
+
+@pytest.mark.asyncio
+async def test_get_team_matches_invalid_event_data(calculator):
+    mock_invalid_event = {
+        "events": [
+            {"name": "Invalid Event"}  # Missing code and startDate
+        ]
+    }
+
+    with patch('epa_calculator.ftc_api_request') as mock_api:
+        mock_api.return_value = mock_invalid_event
+        
+        result = await calculator.get_team_matches(12345)
+        
+        assert isinstance(result, dict)
+        assert len(result) == 0  # Should skip invalid event

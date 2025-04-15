@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 import base64
 import asyncio
 import httpx
-import math  # Add this import
+import math
+import time
 from fastapi import HTTPException
 from utils.api_utils import ftc_api_request
 
@@ -16,7 +17,7 @@ class EPACalculator:
         }
         self.k = 12  # EPA scaling factor for win probability
 
-    async def get_team_matches(self, team_number: int) -> dict:
+    async def get_team_matches(self, team_number: int, start_date: str = None) -> dict:
         all_matches = {}
         
         # Only fetch from 2022 onwards as older data seems unreliable
@@ -26,7 +27,10 @@ class EPACalculator:
                 
                 if not events_response.get("events"):
                     continue
-                
+                # print events_response and start_date and team_number
+                print(f"Received events response for team {team_number} in season {season}: {events_response}")
+                print(f"start_date: {start_date}")
+                print(f"team_number: {team_number}")
                 # Prepare parallel requests for qualification matches only
                 match_tasks = []
                 for event in events_response.get("events", []):
@@ -34,6 +38,26 @@ class EPACalculator:
                     if not event.get('code'):
                         continue
                         
+                    # Get event date and year
+                    event_date = event.get('dateStart', '')[:10] if event.get('dateStart') else '9999-99-99'  # Default to future date if missing
+                    event_year = int(event_date[:4]) if event_date != '9999-99-99' else 9999
+
+                    # Skip if event year is less than season
+                    if event_year < season:
+                        print(f"Skipping event {event['code']} as event year {event_year} is less than season {season}")
+                        continue
+
+                    # Skip if event date is after start_date
+                    print(f"event_date: {event_date}, start_date: {start_date[:10]}")
+
+                    if start_date and event_date > start_date[:10]:
+                        print(f"Skipping event {event['code']} as event date is after start_date")
+                        continue
+                        
+                    # Log API request details
+                    print(f"Requesting matches for team {team_number} at event {event['code']} in season {season}")
+                    start_time = time.time()
+                    
                     match_tasks.append({
                         'event': event,
                         'task': ftc_api_request(
@@ -42,7 +66,8 @@ class EPACalculator:
                                 "tournamentLevel": "qual",
                                 "teamNumber": team_number
                             }
-                        )
+                        ),
+                        'start_time': start_time
                     })
                 
                 if not match_tasks:
@@ -57,9 +82,16 @@ class EPACalculator:
                 # Process results and filter for Qualification matches
                 season_matches = []
                 for result, task_info in zip(match_results, match_tasks):
+                    end_time = time.time()
+                    response_time = end_time - task_info['start_time']
+                    
                     if isinstance(result, Exception):
+                        print(f"Error fetching matches for event {task_info['event']['code']}: {str(result)}")
                         continue
-                        
+                    
+                    # Log response details
+                    print(f"Received response for event {task_info['event']['code']} in {response_time:.2f} seconds")
+                    
                     if result.get("matches"):
                         for match in result["matches"]:
                             # Only include matches with tournamentLevel set to "QUALIFICATION"
@@ -72,6 +104,7 @@ class EPACalculator:
                     all_matches[season] = season_matches
                 
             except Exception as e:
+                print(f"Error processing season {season}: {str(e)}")
                 continue
         
         return all_matches

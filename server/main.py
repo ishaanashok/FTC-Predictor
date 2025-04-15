@@ -265,12 +265,15 @@ async def get_event_predictions_epa(data: dict):
             print(f"Starting EPA calculations for {len(teams_list)} teams")
             start_time = time.time()
             
-            for team in teams_list:
+            # Create coroutines for all teams
+            async def process_team(team):
                 try:
                     print(f"Fetching matches for team {team['teamNumber']}")
                     team_start_time = time.time()
                     
-                    matches = await calculator.get_team_matches(team['teamNumber'])
+                    # Get event start date from event_info
+                    event_start_date = event_info.get('events', [])[0].get('dateStart') if event_info.get('events') else None
+                    matches = await calculator.get_team_matches(team['teamNumber'], event_start_date)
                     team_fetch_time = time.time() - team_start_time
                     print(f"Fetched matches for team {team['teamNumber']} in {team_fetch_time:.2f} seconds")
                     
@@ -279,11 +282,14 @@ async def get_event_predictions_epa(data: dict):
                     epa_calc_time = time.time() - epa_start_time
                     print(f"Calculated EPA for team {team['teamNumber']} in {epa_calc_time:.2f} seconds")
                     
-                    epa_tasks.append({"teamNumber": team['teamNumber'], "historicalEPA": epa})
-                    
+                    return {"teamNumber": team['teamNumber'], "historicalEPA": epa}
                 except Exception as e:
                     print(f"Error processing team {team['teamNumber']}: {str(e)}")
-                    continue
+                    return None
+            
+            # Execute all team processing coroutines in parallel. 
+            epa_tasks = await asyncio.gather(*[process_team(team) for team in teams_list])
+            epa_tasks = [task for task in epa_tasks if task is not None]
             
             total_time = time.time() - start_time
             print(f"Completed EPA calculations for all teams in {total_time:.2f} seconds")
