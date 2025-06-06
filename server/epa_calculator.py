@@ -23,55 +23,75 @@ class EPACalculator:
         # Only fetch from 2022 onwards as older data seems unreliable
         for season in range(2022, 2025):
             try:
-                events_response = await ftc_api_request(f"/{season}/events", {"teamNumber": team_number})
+                # Fetch events for the season with increased limit
+                events_response = await ftc_api_request(f"/{season}/events", {
+                    "teamNumber": team_number,
+                    "limit": 50  # Increase limit to reduce pagination
+                })
                 
-                if not events_response.get("events"):
+                if not events_response or not isinstance(events_response, dict):
+                    print(f"Invalid or empty response for season {season}")
                     continue
-                # print events_response and start_date and team_number
-                print(f"Received events response for team {team_number} in season {season}: {events_response}")
-                print(f"start_date: {start_date}")
-                print(f"team_number: {team_number}")
+
+                events = events_response.get("events", [])
+                if not events:
+                    print(f"No events found for team {team_number} in season {season}")
+                    continue
+
                 # Prepare parallel requests for qualification matches only
                 match_tasks = []
-                for event in events_response.get("events", []):
-                    # Skip if event code is missing
-                    if not event.get('code'):
+                for event in events:
+                    if not event or not isinstance(event, dict):
+                        print(f"Skipping invalid event data in season {season}")
+                        continue
+
+                    event_code = event.get('code')
+                    if not event_code:
+                        print(f"Skipping event with missing code in season {season}")
                         continue
                         
-                    # Get event date and year
-                    event_date = event.get('dateStart', '')[:10] if event.get('dateStart') else '9999-99-99'  # Default to future date if missing
-                    event_year = int(event_date[:4]) if event_date != '9999-99-99' else 9999
-
-                    # Skip if event year is less than season
-                    if event_year < season:
-                        print(f"Skipping event {event['code']} as event year {event_year} is less than season {season}")
+                    event_date = event.get('dateStart', '')
+                    if not event_date:
+                        print(f"No start date for event {event_code}, using default future date")
+                        event_date = '9999-99-99'
+                    else:
+                        event_date = event_date[:10]
+                    
+                    try:
+                        event_year = int(event_date[:4])
+                    except (ValueError, TypeError):
+                        print(f"Invalid date format for event {event_code}: {event_date}")
                         continue
 
-                    # Skip if event date is after start_date
-                    print(f"event_date: {event_date}, start_date: {start_date[:10]}")
+                    if event_year < season:
+                        print(f"Skipping event {event_code} as event year {event_year} is less than season {season}")
+                        continue
 
                     if start_date and event_date > start_date[:10]:
-                        print(f"Skipping event {event['code']} as event date is after start_date")
+                        print(f"Skipping event {event_code} as event date {event_date} is after start_date {start_date[:10]}")
                         continue
                         
-                    # Log API request details
-                    print(f"Requesting matches for team {team_number} at event {event['code']} in season {season}")
+                    print(f"Requesting matches for team {team_number} at event {event_code} in season {season}")
                     start_time = time.time()
                     
                     match_tasks.append({
                         'event': event,
                         'task': ftc_api_request(
-                            f"/{season}/matches/{event['code']}", 
+                            f"/{season}/matches/{event_code}", 
                             {
                                 "tournamentLevel": "qual",
-                                "teamNumber": team_number
+                                "teamNumber": team_number,
+                                "limit": 100  # Increase limit to reduce pagination
                             }
                         ),
                         'start_time': start_time
                     })
                 
                 if not match_tasks:
+                    print(f"No valid events found for team {team_number} in season {season}")
                     continue
+                
+                print(f"Processing {len(match_tasks)} events for team {team_number} in season {season}")
                 
                 # Execute all requests in parallel with timeout
                 match_results = await asyncio.gather(
@@ -84,24 +104,36 @@ class EPACalculator:
                 for result, task_info in zip(match_results, match_tasks):
                     end_time = time.time()
                     response_time = end_time - task_info['start_time']
+                    event_code = task_info['event'].get('code', 'unknown')
                     
-                    if isinstance(result, Exception):
-                        print(f"Error fetching matches for event {task_info['event']['code']}: {str(result)}")
+                    if isinstance(result, Exception) or not isinstance(result, dict):
+                        print(f"Error fetching matches for event {event_code}: {str(result)}")
                         continue
                     
-                    # Log response details
-                    print(f"Received response for event {task_info['event']['code']} in {response_time:.2f} seconds")
+                    print(f"Received response for event {event_code} in {response_time:.2f} seconds")
                     
-                    if result.get("matches"):
-                        for match in result["matches"]:
-                            # Only include matches with tournamentLevel set to "QUALIFICATION"
-                            if match.get('tournamentLevel', '').upper() == "QUALIFICATION":
-                                match["eventCode"] = task_info['event']['code']
-                                match["eventName"] = task_info['event']['name']
-                                season_matches.append(match)
+                    matches = result.get("matches", [])
+                    if not matches:
+                        print(f"No matches found for event {event_code}")
+                        continue
+
+                    match_count = 0
+                    for match in matches:
+                        if not match or not isinstance(match, dict):
+                            continue
+                        if match.get('tournamentLevel', '').upper() == "QUALIFICATION":
+                            match["eventCode"] = task_info['event'].get('code')
+                            match["eventName"] = task_info['event'].get('name')
+                            season_matches.append(match)
+                            match_count += 1
+                    
+                    print(f"Added {match_count} qualification matches from event {event_code}")
                 
                 if season_matches:
+                    print(f"Total {len(season_matches)} matches found for season {season}")
                     all_matches[season] = season_matches
+                else:
+                    print(f"No qualification matches found for season {season}")
                 
             except Exception as e:
                 print(f"Error processing season {season}: {str(e)}")
@@ -201,23 +233,23 @@ class EPACalculator:
             blue_epa = sum(team_epas.get(str(team), 0.0) for team in blue_alliance)
             print(f"Red EPA: {red_epa}, Blue EPA: {blue_epa}")
             
-            # Calculate EPA difference and normalize
+            # Calculate EPA difference (ΔEPA)
             epa_diff = red_epa - blue_epa
-            avg_epa = (red_epa + blue_epa) / 2
-            normalized_diff = epa_diff / (avg_epa + 1e-6)  # Avoid division by zero
             
-            # Use sigmoid function with adjusted scaling
-            k = 0.5  # Scaling factor to make probabilities more reasonable
-            red_win_prob = 1 / (1 + math.exp(-normalized_diff / k))
+            # Calculate win probability using the formula: 1/(1 + 10^(-ΔEPA/400))
+            red_win_prob = 1 / (1 + math.pow(10, -epa_diff/400))
+            blue_win_prob = 1 - red_win_prob
             
-            # Clamp probabilities to avoid extreme values
-            red_win_prob = max(0.05, min(0.95, red_win_prob))
+            # Determine winner and color styling
+            predicted_winner = 'Red' if red_win_prob > 0.5 else 'Blue'
+            winner_color = '#fee2e2' if predicted_winner == 'Red' else '#dbeafe'  # Light red or light blue from theme
             
             return {
                 'red_win_probability': round(red_win_prob, 3),
-                'blue_win_probability': round(1 - red_win_prob, 3),
-                'predicted_winner': 'Red' if red_win_prob > 0.5 else 'Blue',
-                'win_margin': abs(red_epa - blue_epa)
+                'blue_win_probability': round(blue_win_prob, 3),
+                'predicted_winner': predicted_winner,
+                'winner_color': winner_color,
+                'win_margin': abs(epa_diff)
             }
         except Exception as e:
             print(f"Error calculating match win probability: {e}")
@@ -225,5 +257,6 @@ class EPACalculator:
                 'red_win_probability': 0.5,
                 'blue_win_probability': 0.5,
                 'predicted_winner': 'Tie',
+                'winner_color': '#ffffff',  # White for tie
                 'win_margin': 0
             }

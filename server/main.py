@@ -236,7 +236,7 @@ async def get_event_predictions_epa(data: dict):
         
         print(f"Processing request for season {season}, event {event_code}")
         
-        # Get all data in parallel
+        # Get all initial data in parallel
         try:
             event_info, teams_data, matches_data = await asyncio.gather(
                 ftc_api_request(f"/{season}/events", {"eventCode": event_code}),
@@ -254,72 +254,85 @@ async def get_event_predictions_epa(data: dict):
             print(f"Error fetching initial data: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error fetching event data: {str(e)}")
         
-        print(f"Found {len(teams_data.get('teams', []))} teams")
-        
-        # Get EPA for all teams
-        calculator = EPACalculator()
-        epa_tasks = []
         teams_list = teams_data.get('teams', [])
+        print(f"Found {len(teams_list)} teams")
+        
+        # Process teams in parallel batches to avoid overwhelming the API
+        calculator = EPACalculator()
+        batch_size = 10  # Process 5 teams at a time
+        epa_results = []
         
         try:
             print(f"Starting EPA calculations for {len(teams_list)} teams")
             start_time = time.time()
             
-            # Create coroutines for all teams
-            async def process_team(team):
-                try:
-                    print(f"Fetching matches for team {team['teamNumber']}")
-                    team_start_time = time.time()
+            # Process teams in batches
+            for i in range(0, len(teams_list), batch_size):
+                batch = teams_list[i:i + batch_size]
+                
+                # Create batch of coroutines
+                batch_tasks = []
+                for team in batch:
+                    async def process_team(team_info):
+                        try:
+                            team_start_time = time.time()
+                            print(f"Processing team {team_info['teamNumber']}")
+                            
+                            # Get event start date
+                            event_start_date = event_info.get('events', [])[0].get('dateStart') if event_info.get('events') else None
+                            
+                            # Get matches and calculate EPA in parallel
+                            matches = await calculator.get_team_matches(team_info['teamNumber'], event_start_date)
+                            epa = calculator.calculate_historical_epa(matches, team_info['teamNumber'])
+                            
+                            process_time = time.time() - team_start_time
+                            print(f"Processed team {team_info['teamNumber']} in {process_time:.2f} seconds")
+                            
+                            return {"teamNumber": team_info['teamNumber'], "historicalEPA": epa}
+                        except Exception as e:
+                            print(f"Error processing team {team_info['teamNumber']}: {str(e)}")
+                            return None
                     
-                    # Get event start date from event_info
-                    event_start_date = event_info.get('events', [])[0].get('dateStart') if event_info.get('events') else None
-                    matches = await calculator.get_team_matches(team['teamNumber'], event_start_date)
-                    team_fetch_time = time.time() - team_start_time
-                    print(f"Fetched matches for team {team['teamNumber']} in {team_fetch_time:.2f} seconds")
-                    
-                    epa_start_time = time.time()
-                    epa = calculator.calculate_historical_epa(matches, team['teamNumber'])
-                    epa_calc_time = time.time() - epa_start_time
-                    print(f"Calculated EPA for team {team['teamNumber']} in {epa_calc_time:.2f} seconds")
-                    
-                    return {"teamNumber": team['teamNumber'], "historicalEPA": epa}
-                except Exception as e:
-                    print(f"Error processing team {team['teamNumber']}: {str(e)}")
-                    return None
-            
-            # Execute all team processing coroutines in parallel. 
-            epa_tasks = await asyncio.gather(*[process_team(team) for team in teams_list])
-            epa_tasks = [task for task in epa_tasks if task is not None]
+                    batch_tasks.append(process_team(team))
+                
+                # Execute batch of tasks in parallel
+                batch_results = await asyncio.gather(*batch_tasks)
+                epa_results.extend([r for r in batch_results if r is not None])
+                
+                # Small delay between batches to prevent rate limiting
+                await asyncio.sleep(0.0)
             
             total_time = time.time() - start_time
             print(f"Completed EPA calculations for all teams in {total_time:.2f} seconds")
+            
         except Exception as e:
             print(f"Error processing team EPAs: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error calculating team EPAs: {str(e)}")
         
         # Create EPA mapping
-        team_epas = {str(team['teamNumber']): epa_result['historicalEPA'] 
-                    for team, epa_result in zip(teams_data.get('teams', []), epa_tasks)}
+        team_epas = {str(result['teamNumber']): result['historicalEPA'] for result in epa_results}
         
         print(f"Calculated EPAs for {len(team_epas)} teams")
         
         # Calculate predictions for all matches
         predictions = []
         try:
-            for match in matches_data.get('matches', []):
-                red_teams = [team['teamNumber'] for team in match['teams'] 
-                            if 'Red' in team['station']]
-                blue_teams = [team['teamNumber'] for team in match['teams'] 
-                             if 'Blue' in team['station']]
+            # Process match predictions in parallel
+            async def process_match(match):
+                red_teams = [team['teamNumber'] for team in match['teams'] if 'Red' in team['station']]
+                blue_teams = [team['teamNumber'] for team in match['teams'] if 'Blue' in team['station']]
                 
                 prediction = calculator.calculate_match_win_probability(
                     red_teams, blue_teams, team_epas
                 )
                 
-                predictions.append({
+                return {
                     'matchNumber': match['matchNumber'],
                     'prediction': prediction
-                })
+                }
+            
+            prediction_tasks = [process_match(match) for match in matches_data.get('matches', [])]
+            predictions = await asyncio.gather(*prediction_tasks)
                 
         except Exception as e:
             print(f"Error calculating predictions: {str(e)}")
@@ -332,6 +345,7 @@ async def get_event_predictions_epa(data: dict):
             'teamEPAs': team_epas,
             'predictions': predictions
         }
+        
     except Exception as e:
         print(f"Unexpected error in get_event_predictions_epa: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

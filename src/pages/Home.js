@@ -22,7 +22,7 @@ function Home() {
               display: 'flex', 
               alignItems: 'center',
               gap: 4,
-              background: 'linear-gradient(45deg, #1976d2 30%, #21CBF3 90%)',
+              background: 'linear-gradient(45deg,rgb(142, 25, 210) 30%,rgb(239, 177, 251) 90%)',
               color: 'white'
             }}
           >
@@ -45,7 +45,7 @@ function Home() {
                   width: '100%', 
                   height: '100%', 
                   objectFit: 'contain',
-                  borderRadius: '50%'
+                  borderRadius: '50%',
                 }}
               />
             </Box>

@@ -20,6 +20,8 @@ import {
 import FTCApi from '../services/ftcapi';
 import { IconButton } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import VerifiedIcon from '@mui/icons-material/Verified';
+import Link from '@mui/material/Link';
 
 const EventDetails = () => {
   const { season, eventCode } = useParams();
@@ -152,6 +154,7 @@ const EventDetails = () => {
               <Typography>Location: {eventDetails?.events[0]?.venue}</Typography>
               <Typography>City: {eventDetails?.events[0]?.city}</Typography>
               <Typography>State: {eventDetails?.events[0]?.stateProv}</Typography>
+              <Typography><a href="https://https://ftc-events.firstinspires.org/services/API">✓ Data Verified by FIRST</a></Typography>
             </Grid>
             
             <Grid item xs={12}>
@@ -244,3 +247,19 @@ const EventDetails = () => {
 };
 
 export default EventDetails;
+  {EventDetails && (
+    <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 2 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
+        <VerifiedIcon sx={{ fontSize: 16, mr: 0.5, color: 'success.main' }} />
+        Data Verified by{' '}
+        <Link 
+          href="https://ftc-events.firstinspires.org/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          sx={{ ml: 0.5 }}
+        >
+          FIRST
+        </Link>
+      </Typography>
+    </Box>
+  )}

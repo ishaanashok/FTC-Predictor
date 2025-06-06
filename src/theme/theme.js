@@ -13,6 +13,16 @@ export const theme = createTheme({
       light: '#a78bfa',
       dark: '#5b21b6',
     },
+    error: {
+      main: '#ef4444',  // Red alliance
+      light: '#fee2e2',  // Light red background
+      dark: '#b91c1c',   // Dark red text
+    },
+    info: {
+      main: '#3b82f6',  // Blue alliance
+      light: '#dbeafe',  // Light blue background
+      dark: '#1d4ed8',   // Dark blue text
+    },
     background: {
       default: '#f8fafc',
       paper: '#ffffff',

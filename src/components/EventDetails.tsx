@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Box, Typography, useTheme } from '@mui/material';
 import FTCApi from '../services/ftcapi';
-
-const ftcApi = new FTCApi();
 import '../styles/components.css';
 
 interface EventDetail {
@@ -27,20 +26,32 @@ interface TeamRanking {
     rankingPoints: number;
 }
 
+interface Prediction {
+    predicted_winner: string;
+    red_win_probability: number;
+    blue_win_probability: number;
+    winner_color: string;
+    win_margin: number;
+}
+
 const EventDetails: React.FC = () => {
+    const theme = useTheme();
     const { eventCode } = useParams<{ eventCode: string }>();
     const [event, setEvent] = useState<EventDetail | null>(null);
     const [rankings, setRankings] = useState<TeamRanking[]>([]);
+    const [prediction, setPrediction] = useState<Prediction | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const ftcApi = new FTCApi();
 
     useEffect(() => {
         const fetchEventDetails = async () => {
             try {
                 const currentYear = new Date().getFullYear();
-                const [eventResponse, rankingsResponse] = await Promise.all([
+                const [eventResponse, rankingsResponse, predictionResponse] = await Promise.all([
                     ftcApi.getEventInfo(currentYear, eventCode),
-                    ftcApi.getEventRankings(currentYear, eventCode)
+                    ftcApi.getEventRankings(currentYear, eventCode),
+                    ftcApi.getPrediction(currentYear, eventCode)
                 ]);
 
                 if (eventResponse.events && eventResponse.events[0]) {
@@ -48,6 +59,9 @@ const EventDetails: React.FC = () => {
                 }
                 if (rankingsResponse.rankings) {
                     setRankings(rankingsResponse.rankings);
+                }
+                if (predictionResponse) {
+                    setPrediction(predictionResponse);
                 }
                 setLoading(false);
             } catch (err) {
@@ -76,6 +90,34 @@ const EventDetails: React.FC = () => {
                 <p>Date: {new Date(event.dateStart).toLocaleDateString()} - {new Date(event.dateEnd).toLocaleDateString()}</p>
             </div>
 
+            {prediction && (
+                <Box sx={{
+                    backgroundColor: prediction.predicted_winner === 'Red' 
+                        ? theme.palette.error.light  // Light red from theme
+                        : theme.palette.info.light,  // Light blue from theme
+                    padding: 2,
+                    borderRadius: theme.shape.borderRadius,
+                    marginY: 2,
+                    border: `1px solid ${prediction.predicted_winner === 'Red' 
+                        ? theme.palette.error.main 
+                        : theme.palette.info.main}`,
+                }}>
+                    <Typography variant="h6" color={prediction.predicted_winner === 'Red' 
+                        ? theme.palette.error.dark 
+                        : theme.palette.info.dark
+                    }>
+                        Predicted Winner: {prediction.predicted_winner}
+                    </Typography>
+                    <Typography color="text.secondary">
+                        Win Probability: {
+                            prediction.predicted_winner === 'Red'
+                                ? `${(prediction.red_win_probability * 100).toFixed(1)}%`
+                                : `${(prediction.blue_win_probability * 100).toFixed(1)}%`
+                        }
+                    </Typography>
+                </Box>
+            )}
+
             <h3>Rankings</h3>
             <div className="rankings-table">
                 <table>
@@ -86,6 +128,7 @@ const EventDetails: React.FC = () => {
                             <th>W-L-T</th>
                             <th>QP</th>
                             <th>RP</th>
+
                         </tr>
                     </thead>
                     <tbody>

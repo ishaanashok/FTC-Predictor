@@ -40,7 +40,7 @@ function Navbar() {
               fontWeight: 'bold'
             }}
           >
-            WinK
+            Inkistics
           </Typography>
         </Box>
 
