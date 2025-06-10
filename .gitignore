@@ -7,4 +7,4 @@ build/
 .vscode/settings.json
 FTC Events API.postman_collection.json
 .vscode/launch.json
-.git-credentials.txt
+.git-credentials
