@@ -212,6 +212,20 @@ class FTCApi {
             throw error;
         }
     }
+
+    async getBestAlliancePartner(season, eventCode, teamNumber) {
+        try {
+            const response = await this.axiosInstance.post('/alliance-matchmaker', {
+                season,
+                eventCode,
+                teamNumber
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error finding alliance partner:', error);
+            throw error;
+        }
+    }
 }
 
 export default FTCApi;

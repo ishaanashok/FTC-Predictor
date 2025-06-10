@@ -22,6 +22,7 @@ import { IconButton } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import Link from '@mui/material/Link';
+import AllianceMatchmaker from '../components/AllianceMatchmaker';
 
 const EventDetails = () => {
   const { season, eventCode } = useParams();
@@ -108,6 +109,7 @@ const EventDetails = () => {
       return () => clearInterval(interval);
     }
   }, [loading]);
+
   if (loading) return (
     <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="80vh">
       <CircularProgress sx={{ mb: 2 }} />
@@ -116,6 +118,7 @@ const EventDetails = () => {
       </Typography>
     </Box>
   );
+
   if (error) return <Container><Typography color="error">{error}</Typography></Container>;
 
   const handleRefresh = async () => {
@@ -144,6 +147,7 @@ const EventDetails = () => {
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Event Details" />
           <Tab label="Matches" />
+          <Tab label="Alliance Matchmaker" />
         </Tabs>
   
         {activeTab === 0 ? (
@@ -154,7 +158,7 @@ const EventDetails = () => {
               <Typography>Location: {eventDetails?.events[0]?.venue}</Typography>
               <Typography>City: {eventDetails?.events[0]?.city}</Typography>
               <Typography>State: {eventDetails?.events[0]?.stateProv}</Typography>
-              <Typography><a href="https://https://ftc-events.firstinspires.org/services/API">✓ Data Verified by FIRST</a></Typography>
+              <Typography><a href="https://ftc-events.firstinspires.org/services/API">✓ Data Verified by FIRST</a></Typography>
             </Grid>
             
             <Grid item xs={12}>
@@ -185,7 +189,7 @@ const EventDetails = () => {
               </TableContainer>
             </Grid>
           </Grid>
-        ) : (
+        ) : activeTab === 1 ? (
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
@@ -240,26 +244,17 @@ const EventDetails = () => {
               </TableBody>
             </Table>
           </TableContainer>
-        )}
+        ) : activeTab === 2 ? (
+          <AllianceMatchmaker 
+            season={Number(season)}
+            eventCode={eventCode}
+            teams={teams}
+            teamEPAs={teamEPAs}
+          />
+        ) : null}
       </Paper>
     </Container>
   );
 };
 
 export default EventDetails;
-  {EventDetails && (
-    <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 2 }}>
-      <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
-        <VerifiedIcon sx={{ fontSize: 16, mr: 0.5, color: 'success.main' }} />
-        Data Verified by{' '}
-        <Link 
-          href="https://ftc-events.firstinspires.org/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          sx={{ ml: 0.5 }}
-        >
-          FIRST
-        </Link>
-      </Typography>
-    </Box>
-  )}

@@ -5,6 +5,7 @@ import asyncio
 import httpx
 import math
 import time
+from typing import Optional
 from fastapi import HTTPException
 from utils.api_utils import ftc_api_request
 
@@ -17,7 +18,7 @@ class EPACalculator:
         }
         self.k = 12  # EPA scaling factor for win probability
 
-    async def get_team_matches(self, team_number: int, start_date: str = None) -> dict:
+    async def get_team_matches(self, team_number: int, start_date: Optional[str] = None) -> dict:
         all_matches = {}
         
         # Only fetch from 2022 onwards as older data seems unreliable
@@ -92,12 +93,21 @@ class EPACalculator:
                     continue
                 
                 print(f"Processing {len(match_tasks)} events for team {team_number} in season {season}")
+                  # Execute all requests in parallel with timeout and concurrency limiting
+                concurrency_limit = 20  # Limit concurrent requests to avoid overwhelming the API
                 
-                # Execute all requests in parallel with timeout
-                match_results = await asyncio.gather(
-                    *[task['task'] for task in match_tasks],
-                    return_exceptions=True
-                )
+                # Group tasks into chunks of concurrency_limit size
+                async def process_chunk(chunk):
+                    return await asyncio.gather(*[task['task'] for task in chunk], return_exceptions=True)
+                
+                chunks = [match_tasks[i:i + concurrency_limit] for i in range(0, len(match_tasks), concurrency_limit)]
+                all_results = []
+                
+                for chunk in chunks:
+                    chunk_results = await process_chunk(chunk)
+                    all_results.extend(chunk_results)
+                
+                match_results = all_results
                 
                 # Process results and filter for Qualification matches
                 season_matches = []
